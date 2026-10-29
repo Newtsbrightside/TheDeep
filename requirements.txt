@@ -1,0 +1,24 @@
+# ============================================================
+# Deep Learning Project – Requirements
+# Tested on: Python 3.10, CUDA 11.8 (free Google Colab T4)
+# ============================================================
+
+# --- Core Deep Learning ---
+torch==2.2.0
+torchvision==0.17.0
+
+# --- Dataset ---
+medmnist==3.0.2
+
+# --- Numerics & Data ---
+numpy==1.26.4
+pandas==2.2.1
+scikit-learn==1.4.1.post1
+
+# --- Visualisation ---
+matplotlib==3.8.3
+seaborn==0.13.2
+
+# --- Utilities ---
+tqdm==4.66.2
+Pillow==10.2.0
