@@ -44,6 +44,7 @@ IMG_SIZE      = 28                    # native MedMNIST resolution
 BATCH_SIZE    = 64
 NUM_WORKERS   = 2
 DATA_ROOT     = Path("data")          # downloaded dataset cached here
+DATA_ROOT.mkdir(parents=True, exist_ok=True)   # ensure it exists before medmnist uses it
 SPLITS_DIR    = Path("splits")        # CSV files saved here
 PLOTS_DIR     = Path("outputs/plots")
 

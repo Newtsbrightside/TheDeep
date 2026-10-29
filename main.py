@@ -50,6 +50,12 @@ def main(args):
     print("  DermaMNIST Deep Learning Project – Full Pipeline")
     print("█" * 65)
 
+    # ── Ensure all output directories exist (important for Colab) ─────────────
+    from pathlib import Path
+    for d in ["data", "splits", "outputs/checkpoints", "outputs/plots", "outputs/results"]:
+        Path(d).mkdir(parents=True, exist_ok=True)
+    print("[init] Output directories ready.")
+
     # ── Step 1: Dataset preparation ───────────────────────────────────────────
     if not args.skip_train:
         print("\n── Step 1: Dataset Preparation ──")
