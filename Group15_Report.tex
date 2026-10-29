@@ -1,0 +1,516 @@
+% ============================================================
+%  GroupXX_Report.tex
+%  IEEE Conference Template (two-column)
+%  Topic: Skin Lesion Classification with DermaMNIST
+%  4–6 pages (excluding references and appendix)
+% ============================================================
+\documentclass[conference]{IEEEtran}
+
+% ---- Packages ------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{xcolor}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{microtype}
+
+\graphicspath{{figures/}}   % all .png files are in the figures/ subfolder
+
+% ---- Fix hyperref + IEEE conflict ---------------------------------
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+
+% ---- Title ---------------------------------------------------------
+\title{Group 15: Skin Lesion Classification via Deep Learning:\\
+Baseline CNN, Transfer Learning, and Focal Loss on DermaMNIST}
+
+\author{
+  \IEEEauthorblockN{Muhammad Yunus Zulfikar Putra Dwi Hakim}
+  \IEEEauthorblockA{Artificial Intelligence\\
+  Universitas Pelita Harapan, Tangerang, Indonesia\\
+  01881250008@student.uph.edu}
+  \and
+  \IEEEauthorblockN{Calvin Japutra}
+  \IEEEauthorblockA{Artificial Intelligence\\
+  Universitas Pelita Harapan, Tangerang, Indonesia\\
+  01881250024@student.uph.edu}
+  \and
+  \IEEEauthorblockN{Norman Abimael Zachary}
+  \IEEEauthorblockA{Artificial Intelligence\\
+  Universitas Pelita Harapan, Tangerang, Indonesia\\
+  01881250019@student.uph.edu}
+}
+
+\begin{document}
+\maketitle
+
+% ====================================================================
+\begin{abstract}
+Automated skin lesion classification is a promising application of deep
+learning in computer-aided dermatology, with the potential to support
+early detection of melanoma and other skin cancers. In this work, we
+compare three deep learning approaches for seven-class skin lesion
+classification on the publicly available DermaMNIST benchmark
+\cite{yang2023medmnist}. Our baseline is a compact three-block
+convolutional neural network (CNN) trained from scratch. Method~A
+applies full fine-tuning of a pretrained ResNet-18 \cite{he2016deep}
+with a standard cross-entropy loss. Method~B extends Method~A with
+two design innovations: (i)~RandAugment \cite{cubuk2020randaugment}
+for training-time augmentation, and (ii)~Focal Loss
+\cite{lin2017focal} with inverse-frequency class weights to address
+the inherent class imbalance in DermaMNIST. All models are trained
+over three random seeds and evaluated using Balanced Accuracy and
+Macro-F1. Our results show that transfer learning (Method~A) yields
+a Macro-F1 of $0.5048 \pm 0.0304$, substantially outperforming the
+baseline ($0.3510 \pm 0.0014$). Method~B achieves the highest
+Balanced Accuracy of $0.6221 \pm 0.0178$, confirming that Focal Loss
+with class-weighting better handles minority classes at the cost of
+slightly reduced Macro-F1. These findings highlight the importance
+of both pretrained features and class-aware loss design for imbalanced
+medical image classification. All code is publicly available and
+fully reproducible.
+\end{abstract}
+
+% ====================================================================
+\section{Introduction}
+
+Skin cancer is among the most prevalent cancers worldwide, with
+melanoma responsible for the majority of skin cancer deaths
+\cite{siegel2023cancer}. Early and accurate diagnosis is critical
+for patient outcomes, yet visual inspection by dermatologists is
+time-consuming and subject to inter-observer variability. Deep
+learning-based classification systems offer a scalable complement
+to clinical diagnosis.
+
+\textbf{Problem statement.}
+Given a dermoscopic image of a skin lesion (input: RGB image), the
+model must predict one of seven diagnostic categories (output:
+class label $y \in \{0,\ldots,6\}$): actinic keratoses,
+basal cell carcinoma, benign keratosis, dermatofibroma, melanoma,
+melanocytic nevi, and vascular lesions.
+
+\textbf{Hypothesis.}
+We hypothesize that:
+\begin{enumerate}
+  \item Transfer learning (Method~A) will substantially outperform
+        the scratch-trained baseline because pretrained ImageNet
+        features provide rich descriptors that transfer to dermoscopy.
+  \item Method~B will outperform Method~A on Balanced Accuracy because
+        Focal Loss with class weights provides a stronger training
+        signal for rare minority classes (e.g., dermatofibroma,
+        vascular lesion), and RandAugment reduces overfitting on the
+        dominant melanocytic nevi class.
+\end{enumerate}
+
+\textbf{Contributions.}
+(1)~A modular, reproducible PyTorch codebase for DermaMNIST
+classification with full seed control.
+(2)~An empirical comparison of three methods under identical
+conditions across three random seeds.
+(3)~Systematic error analysis via confusion matrix and failure cases.
+
+% ====================================================================
+\section{Related Work}
+
+\textbf{Deep learning for dermatology.}
+Esteva et al.~\cite{esteva2017dermatologist} demonstrated that a CNN
+trained on 129,450 clinical images can classify skin cancer at
+a level comparable to board-certified dermatologists, motivating the
+use of deep learning for skin lesion analysis.
+
+\textbf{MedMNIST benchmark.}
+Yang et al.~\cite{yang2023medmnist} introduced MedMNIST v2, a
+collection of 18 standardized biomedical image classification
+datasets. DermaMNIST, derived from the HAM10000 dataset
+\cite{tschandl2018ham10000}, provides an official three-way split
+and serves as a reproducible benchmark for our study.
+
+\textbf{Transfer learning in medical imaging.}
+Tajbakhsh et al.~\cite{tajbakhsh2016convolutional} showed that
+fine-tuning pretrained networks consistently outperforms training
+from scratch across medical imaging tasks, even when source and
+target domains differ substantially.
+
+\textbf{Focal Loss for class imbalance.}
+Lin et al.~\cite{lin2017focal} proposed Focal Loss to address extreme
+class imbalance by re-weighting the loss based on prediction
+confidence, focusing learning on hard, misclassified examples.
+This is directly applicable to DermaMNIST, where melanocytic nevi
+constitutes $\approx 67\%$ of training samples.
+
+\textbf{RandAugment.}
+Cubuk et al.~\cite{cubuk2020randaugment} proposed RandAugment, which
+randomly samples from a set of transformations during training,
+reducing overfitting on small medical imaging datasets.
+
+% ====================================================================
+\section{Dataset}
+
+\subsection{Source and License}
+DermaMNIST is part of MedMNIST v2 \cite{yang2023medmnist}, derived
+from HAM10000 \cite{tschandl2018ham10000}, licensed under CC~BY~4.0.
+
+\subsection{Statistics and Distribution}
+Each sample is a $28\times28$ RGB dermoscopic image, resized to
+$224\times224$ for all models. The official three-way split is
+used without modification (Table~\ref{tab:dataset}).
+
+\begin{table}[ht]
+\centering
+\caption{DermaMNIST split statistics}
+\label{tab:dataset}
+\begin{tabular}{lrr}
+\toprule
+\textbf{Split} & \textbf{Samples} & \textbf{Max class ratio} \\
+\midrule
+Train   & 7,007 & $\approx$30:1 \\
+Val     & 1,003 & $\approx$30:1 \\
+Test    & 2,005 & $\approx$30:1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Figure~\ref{fig:dist} shows the class distribution across splits;
+melanocytic nevi is the dominant class in all splits ($\approx 67\%$
+of training data), while dermatofibroma is the smallest
+($\approx 2\%$), yielding a 30:1 imbalance ratio.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{class_distribution.png}
+\caption{Class frequency per split (train / val / test).
+Melanocytic nevi dominates all splits; dermatofibroma is the
+rarest class with only $\sim$115 training samples.}
+\label{fig:dist}
+\end{figure}
+
+\subsection{Leakage Check}
+Data integrity was verified by computing MD5 hashes of all images
+across splits. The pairwise intersection of hash sets between any
+two splits was empty, confirming no cross-split duplicates exist.
+
+\subsection{Preprocessing}
+All images are resized to $224\times224$ and normalized using
+ImageNet statistics ($\mu=[0.485, 0.456, 0.406]$,
+$\sigma=[0.229, 0.224, 0.225]$). Method~B additionally applies
+RandAugment ($N=2$, $M=9$) and random horizontal/vertical flips
+during training only.
+
+% ====================================================================
+\section{Method}
+
+\subsection{Baseline CNN}
+
+The baseline is a three-block CNN trained from random initialization.
+Each block follows the pattern: Conv~$\rightarrow$~BatchNorm~$\rightarrow$~ReLU~$\rightarrow$~MaxPool(2).
+Global Average Pooling (GAP) replaces a large flatten layer to
+reduce parameters, followed by a two-layer classifier with
+Dropout(0.5). Table~\ref{tab:baseline_shapes} shows the output
+shape at each layer.
+
+\begin{table}[ht]
+\centering
+\caption{Baseline CNN layer-wise output shapes (batch size = 1)}
+\label{tab:baseline_shapes}
+\begin{tabular}{llr}
+\toprule
+\textbf{Layer} & \textbf{Output Shape} & \textbf{Params} \\
+\midrule
+Input                         & (1, 3, 224, 224)  & —      \\
+Block 1 (Conv32+BN+Pool)      & (1, 32, 112, 112) & 928    \\
+Block 2 (Conv64+BN+Pool)      & (1, 64, 56, 56)   & 18,560 \\
+Block 3 (Conv128+BN+Pool)     & (1, 128, 28, 28)  & 73,984 \\
+Global Avg Pool               & (1, 128, 1, 1)    & —      \\
+Flatten                       & (1, 128)           & —      \\
+FC1 (128$\to$256)+ReLU+Drop   & (1, 256)           & 33,024 \\
+FC2 (256$\to$7)               & (1, 7)             & 1,799  \\
+\midrule
+\textbf{Total}                & —          & \textbf{128,295} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Method A: ResNet-18 + Cross-Entropy}
+
+Method~A initializes from ImageNet-pretrained ResNet-18
+\cite{he2016deep} (torchvision \texttt{IMAGENET1K\_V1}) with the
+final FC layer replaced by a 7-class linear head. All backbone
+layers are trained (full fine-tuning). The loss is standard
+cross-entropy:
+\begin{equation}
+\mathcal{L}_\text{CE} = -\frac{1}{N}\sum_{i=1}^{N} \log p(y_i \mid \mathbf{x}_i)
+\end{equation}
+
+\subsection{Method B: ResNet-18 + RandAugment + Focal Loss}
+
+Method~B uses the identical ResNet-18 architecture as Method~A with
+two design innovations justified by the class imbalance problem:
+
+\textbf{(1) RandAugment} \cite{cubuk2020randaugment}: $N=2$
+randomly chosen augmentation operations (magnitude $M=9$) plus
+random horizontal and vertical flips. Orientation flips are
+clinically safe for skin lesion imagery.
+
+\textbf{(2) Focal Loss} \cite{lin2017focal} with inverse-frequency
+class weights:
+\begin{equation}
+\mathcal{L}_\text{FL}(p_y) = -\alpha_y\,(1 - p_y)^\gamma \log p_y,
+\quad \gamma = 2
+\end{equation}
+where $\alpha_c = N / (C \cdot n_c)$ is the inverse-frequency weight
+for class $c$, $N$ is total training samples, $C=7$, and $n_c$ is
+the per-class count.
+
+\textbf{Justification.} The 30:1 class imbalance biases vanilla
+cross-entropy toward melanocytic nevi predictions. Focal Loss
+down-weights easy, correctly-classified majority-class examples and
+amplifies gradients from hard, misclassified minority-class examples,
+leading to higher Balanced Accuracy at the potential cost of
+Macro-F1 (since precision on minority classes may decrease as the
+model becomes more recall-oriented).
+
+\subsection{Shared Hyperparameters}
+
+\begin{table}[ht]
+\centering
+\caption{Shared training hyperparameters (all models)}
+\label{tab:hparams}
+\begin{tabular}{ll}
+\toprule
+\textbf{Hyperparameter} & \textbf{Value} \\
+\midrule
+Optimizer        & Adam ($\beta_1{=}0.9$, $\beta_2{=}0.999$, wd$=10^{-4}$) \\
+Learning rate    & $10^{-3}$ (initial) \\
+LR schedule      & Cosine Annealing ($T_\text{max}{=}30$, $\eta_\text{min}{=}10^{-6}$) \\
+Max epochs       & 30 \\
+Early stopping   & Patience = 7 (val loss) \\
+Batch size       & 64 \\
+Image size       & $224 \times 224$ \\
+Seeds            & 42, 123, 999 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ====================================================================
+\section{Experiments and Results}
+
+\subsection{Experimental Setup}
+All experiments were conducted on a free-tier Google Colab notebook
+with an NVIDIA T4 GPU. Model selection (best checkpoint) was
+performed using validation loss only; the test set was reserved for
+final evaluation. \textit{Balanced Accuracy} and \textit{Macro-F1}
+were chosen because both weight all classes equally, appropriate for
+the highly imbalanced DermaMNIST distribution.
+
+\subsection{Main Results}
+
+Table~\ref{tab:results} presents the main results over 3 seeds.
+Transfer learning (Method~A) achieves a Macro-F1 of
+$0.5048 \pm 0.0304$, a $43.8\%$ relative improvement over the
+Baseline ($0.3510 \pm 0.0014$), confirming Hypothesis~1. Method~B
+achieves the highest Balanced Accuracy of $0.6221 \pm 0.0178$,
+a $23.3\%$ improvement over Method~A ($0.5056 \pm 0.0471$), but its
+Macro-F1 ($0.4755 \pm 0.0148$) is slightly lower than Method~A.
+
+\begin{table}[ht]
+\centering
+\caption{Main results on the DermaMNIST test set (mean $\pm$ std, 3 seeds).
+Best values per metric in \textbf{bold}.}
+\label{tab:results}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Model} & \textbf{Params} & \textbf{Macro-F1} & \textbf{Bal.\ Acc} \\
+\midrule
+Baseline CNN & 128,295     & $0.3510_{\pm 0.0014}$ & $0.3296_{\pm 0.0036}$ \\
+Method A     & 11,180,103  & $\mathbf{0.5048}_{\pm 0.0304}$ & $0.5056_{\pm 0.0471}$ \\
+Method B     & 11,180,103  & $0.4755_{\pm 0.0148}$ & $\mathbf{0.6221}_{\pm 0.0178}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Learning Curves}
+
+Figure~\ref{fig:curves} shows the training and validation loss for
+seed~42. The Baseline exhibits the slowest convergence and highest
+validation loss. Method~A converges rapidly due to pretrained
+features. Method~B shows a slightly higher initial loss (due to
+Focal Loss scale) but achieves stable validation performance.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{learning_curves.png}
+\caption{Training and validation loss per epoch (seed 42).
+Blue: train; orange dashed: validation; green dotted: best checkpoint.}
+\label{fig:curves}
+\end{figure}
+
+% ====================================================================
+\section{Discussion and Error Analysis}
+
+\subsection{Hypothesis Evaluation}
+Hypothesis~1 is confirmed: Method~A (Macro-F1 = 0.5048) substantially
+outperforms the Baseline (0.3510). Hypothesis~2 is partially confirmed:
+Method~B achieves the best Balanced Accuracy (0.6221 vs.\ 0.5056),
+demonstrating superior minority-class recall, but its Macro-F1 (0.4755)
+does not surpass Method~A (0.5048). This trade-off is expected when
+Focal Loss aggressively boosts recall for rare classes at the cost of
+precision, slightly reducing overall F1.
+
+\subsection{Confusion Matrix Analysis}
+
+Figure~\ref{fig:cm} shows the row-normalised confusion matrix for
+Method~B (seed~42). Key observations:
+\begin{itemize}
+  \item \textit{Melanocytic nevi} achieves the highest per-class
+        recall due to its dominant representation ($\sim$67\% of data).
+  \item \textit{Dermatofibroma} (F1 = 0.27) is most frequently confused
+        with \textit{benign keratosis} and \textit{melanoma}, likely
+        due to overlapping pigmentation patterns at 224$\times$224.
+  \item \textit{Melanoma} is confused with \textit{melanocytic nevi}
+        in a clinically significant fraction of cases, as both share
+        irregular pigment networks.
+  \item \textit{Vascular lesions} achieves a recall of 0.86, suggesting
+        that Focal Loss effectively focuses training on this rare class.
+\end{itemize}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{confusion_matrix_method_b_seed42.png}
+\caption{Row-normalised confusion matrix for Method~B (seed 42) on the
+test set. Diagonal entries are per-class recall.}
+\label{fig:cm}
+\end{figure}
+
+\subsection{Failure Case Analysis}
+
+Figure~\ref{fig:fail} shows three representative failure cases of
+Method~B on the test set.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{failure_cases_method_b_seed42.png}
+\caption{Three failure cases of Method~B (seed 42). Each panel shows
+the image, true label, predicted label, confidence scores, and a
+failure hypothesis.}
+\label{fig:fail}
+\end{figure}
+
+The failures cluster around three recurring patterns:
+(1)~\textit{Melanoma} misclassified as \textit{melanocytic nevi}
+— both share similar dermoscopic patterns (irregular pigment network,
+dark colouration); (2)~\textit{Vascular lesion} confused with
+\textit{dermatofibroma} — both appear as small, flat reddish spots
+at native 28$\times$28 resolution; and (3)~\textit{Actinic keratosis}
+confused with \textit{benign keratosis} — both present as flat,
+scaly lesions with similar colour profiles.
+
+\subsection{Limitations}
+\begin{itemize}
+  \item DermaMNIST native resolution is $28\times28$; upsampling may
+        introduce aliasing artifacts that degrade classification.
+  \item No ablation study separates the individual contributions of
+        RandAugment and Focal Loss within Method~B.
+  \item Generalization beyond DermaMNIST (e.g., full ISIC 2019 dataset)
+        is not evaluated.
+\end{itemize}
+
+% ====================================================================
+\section{Conclusion}
+
+We presented a comparative study of three deep learning approaches for
+skin lesion classification on DermaMNIST. Transfer learning from
+pretrained ResNet-18 (Method~A) yields Macro-F1 = $0.5048 \pm 0.0304$,
+a 43.8\% relative improvement over the scratch-trained baseline,
+confirming the value of pretrained image representations. Method~B
+achieves the best Balanced Accuracy ($0.6221 \pm 0.0178$), confirming
+that Focal Loss with inverse-frequency class weights improves
+minority-class recall on imbalanced dermatological datasets, at a modest
+cost to Macro-F1. Error analysis reveals that melanoma/nevi confusion
+and low-sample-count classes remain the primary challenge.
+
+Future work includes: (i)~ablation studies isolating the contribution
+of RandAugment versus Focal Loss; (ii)~experiments with higher-resolution
+inputs; (iii)~contrastive learning or mixup strategies for minority
+classes; and (iv)~incorporation of patient metadata as auxiliary inputs.
+
+% ====================================================================
+\bibliographystyle{IEEEtran}
+\begin{thebibliography}{99}
+
+\bibitem{yang2023medmnist}
+J.~Yang, R.~Shi, D.~Wei, Z.~Liu, L.~Zhao, B.~Ke, H.~Pfister, and B.~Ni,
+``MedMNIST v2 -- a large-scale lightweight benchmark for 2D and 3D biomedical
+image classification,''
+\emph{Scientific Data}, vol.~10, no.~41, 2023.
+
+\bibitem{he2016deep}
+K.~He, X.~Zhang, S.~Ren, and J.~Sun,
+``Deep residual learning for image recognition,''
+in \emph{Proc. IEEE CVPR}, pp.~770--778, 2016.
+
+\bibitem{cubuk2020randaugment}
+E.~D.~Cubuk, B.~Zoph, J.~Shlens, and Q.~V.~Le,
+``RandAugment: Practical automated data augmentation with a reduced search space,''
+in \emph{Proc. IEEE/CVF CVPRW}, pp.~702--703, 2020.
+
+\bibitem{lin2017focal}
+T.-Y.~Lin, P.~Goyal, R.~Girshick, K.~He, and P.~Doll{\'a}r,
+``Focal loss for dense object detection,''
+in \emph{Proc. IEEE ICCV}, pp.~2980--2988, 2017.
+
+\bibitem{esteva2017dermatologist}
+A.~Esteva, B.~Kuprel, R.~A.~Novoa, J.~Ko, S.~M.~Swetter, H.~M.~Blau,
+and S.~Thrun,
+``Dermatologist-level classification of skin cancer with deep neural networks,''
+\emph{Nature}, vol.~542, no.~7639, pp.~115--118, 2017.
+
+\bibitem{tschandl2018ham10000}
+P.~Tschandl, C.~Rosendahl, and H.~Kittler,
+``The HAM10000 dataset, a large collection of multi-source dermatoscopic images
+of common pigmented skin lesions,''
+\emph{Scientific Data}, vol.~5, p.~180161, 2018.
+
+\bibitem{tajbakhsh2016convolutional}
+N.~Tajbakhsh et al.,
+``Convolutional neural networks for medical image analysis: Full training or
+fine tuning?,''
+\emph{IEEE Trans. Medical Imaging}, vol.~35, no.~5, pp.~1299--1312, 2016.
+
+\bibitem{siegel2023cancer}
+R.~L.~Siegel, K.~D.~Miller, N.~S.~Wagle, and A.~Jemal,
+``Cancer statistics, 2023,''
+\emph{CA: A Cancer Journal for Clinicians}, vol.~73, no.~1, pp.~17--48, 2023.
+
+\end{thebibliography}
+
+% ====================================================================
+\appendix
+
+\section{Team Member Contributions}
+
+\begin{itemize}
+  \item \textbf{Muhammad Yunus Zulfikar Putra Dwi Hakim}: Dataset
+        pipeline, leakage check, visualisations (\texttt{src/dataset.py}),
+        Sections 1--3.
+  \item \textbf{Calvin Japutra}: Model implementation
+        (\texttt{src/models.py}), training loop (\texttt{src/train.py}),
+        hyperparameter decisions, Sections 4--5.
+  \item \textbf{Norman Abimael Zachary}: Evaluation pipeline
+        (\texttt{src/evaluate.py}), error analysis, Sections 6--8.
+\end{itemize}
+
+\section{AI Tool Usage Statement}
+
+Google Antigravity AI (large language model) was used to assist with
+code scaffolding and LaTeX formatting. All experimental design,
+hyperparameter choices, result interpretation, and analysis were
+performed by the team. Every team member is able to explain any part
+of the submitted code and report. AI-generated content was reviewed
+and edited for accuracy before inclusion.
+
+\end{document}
